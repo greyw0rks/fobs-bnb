@@ -1,0 +1,234 @@
+// Fobs — social trading network for tokenized stocks on BNB Chain.
+//
+// The Trade is the social primitive: a Post references a Trade rather than
+// carrying invented trade fields, so every trade-shaped card in the feed is
+// backed by a real (or agent-prepared, wallet-confirmed) order. Profitability
+// and holdings are derived from actual on-chain wallet activity — never faked.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum TradeSide {
+  buy
+  sell
+}
+
+// RFQ lifecycle for tokenized-stock (Ondo / bStock) orders:
+// quote -> user signs -> submit -> poll. Mirrors the on-chain settlement state.
+enum TradeStatus {
+  quoted
+  submitted
+  confirmed
+  failed
+}
+
+enum PostKind {
+  trade
+  text
+}
+
+enum NotificationType {
+  follow
+  like
+  comment
+}
+
+enum AgentTaskStatus {
+  pending
+  analyzing
+  prepared
+  confirmed
+  rejected
+  failed
+}
+
+model User {
+  id            String   @id @default(cuid())
+  walletAddress String   @unique
+  username      String   @unique
+  displayName   String
+  bio           String?
+  avatarUrl     String?
+  xHandle       String?
+  createdAt     DateTime @default(now())
+
+  trades     Trade[]
+  posts      Post[]
+  likes      Like[]
+  comments   Comment[]
+  holdings   Holding[]
+  agentTasks AgentTask[]
+  watchlist  Watchlist[]
+
+  notifications         Notification[] @relation("recipient")
+  actedNotifications    Notification[] @relation("actor")
+
+  following Follow[] @relation("follower")
+  followers Follow[] @relation("following")
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+}
+
+model Asset {
+  id              String   @id @default(cuid())
+  symbol          String   @unique // underlying ticker, e.g. NVDA
+  name            String
+  provider        String // ondo | bstock | xstocks
+  tokenSymbol     String // on-chain symbol, e.g. NVDAon
+  contractAddress String
+  decimals        Int      @default(18)
+  logoUrl         String?
+  createdAt       DateTime @default(now())
+
+  trades   Trade[]
+  posts    Post[]
+  holdings Holding[]
+
+  @@unique([provider, contractAddress])
+}
+
+model Trade {
+  id        String      @id @default(cuid())
+  userId    String
+  assetId   String?
+  symbol    String
+  side      TradeSide
+  amountUsd Float
+  quantity  Float?
+  price     Float?
+  txHash    String?
+  orderId   String? // Binance RFQ order id
+  status    TradeStatus @default(quoted)
+  createdAt DateTime    @default(now())
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset? @relation(fields: [assetId], references: [id])
+  post  Post?
+
+  @@index([userId])
+  @@index([symbol])
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  userId    String
+  tradeId   String?  @unique
+  assetId   String?
+  kind      PostKind @default(trade)
+  content   String
+  createdAt DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trade    Trade?    @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  asset    Asset?    @relation(fields: [assetId], references: [id])
+  likes    Like[]
+  comments Comment[]
+
+  @@index([createdAt])
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  userId    String
+  postId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+}
+
+// Mirrored position, updated as confirmed trades land. Portfolio P&L is read
+// from these + live prices; nothing here is invented.
+model Holding {
+  id        String   @id @default(cuid())
+  userId    String
+  assetId   String
+  quantity  Float    @default(0)
+  avgPrice  Float    @default(0)
+  updatedAt DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, assetId])
+}
+
+// The agent prepares; the wallet authorizes. A task records the analysis and
+// the prepared (never auto-executed) trade — execution requires wallet confirm.
+model AgentTask {
+  id        String          @id @default(cuid())
+  userId    String?
+  prompt    String
+  status    AgentTaskStatus @default(pending)
+  result    Json?
+  tradeId   String?
+  createdAt DateTime        @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+// A symbol a user is watching. Purely a bookmark against the underlying ticker;
+// no position or figure is implied by watching.
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  symbol    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, symbol])
+  @@index([userId])
+}
+
+// A real social event (someone followed you, liked or commented on your post).
+// Emitted only from an actual action — never synthesized.
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String // recipient
+  actorId   String // who performed the action
+  type      NotificationType
+  postId    String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user  User @relation("recipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor User @relation("actor", fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
+}
