@@ -29,6 +29,21 @@ export function qty(value: number | null | undefined): string {
   return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }
 
+/** Compact USD for large figures like market cap — "$5.54T", "$912.4B". Parses
+ *  the string the API sends; an em dash when it's missing or unparseable. */
+export function compactUsd(value: string | number | null | undefined): string {
+  const n = typeof value === "string" ? Number(value) : value;
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  const abs = Math.abs(n);
+  const [div, suffix] =
+    abs >= 1e12 ? [1e12, "T"] :
+    abs >= 1e9 ? [1e9, "B"] :
+    abs >= 1e6 ? [1e6, "M"] :
+    abs >= 1e3 ? [1e3, "K"] :
+    [1, ""];
+  return `$${(n / div).toLocaleString(undefined, { maximumFractionDigits: 2 })}${suffix}`;
+}
+
 export function pct(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;

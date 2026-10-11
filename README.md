@@ -46,15 +46,18 @@ Execution never gives the app or the agent custody. The agent (or the trade
 panel) only ever *prepares*; your wallet is the single thing that can authorize:
 
 ```
-prepare  ->  simulate  ->  wallet signs  ->  submit  ->  settle
+prepare  ->  quote  ->  wallet approves + sends  ->  verify on-chain
 ```
 
-For RWA tokens this is an RFQ: the server fetches a live quote and simulates the
-order (fee, price impact, minimum received, revert risk) *before* your wallet is
-asked to sign. Your wallet signs the real order the aggregator returns — if it
-returns nothing signable, the app refuses rather than sign a summary that can't
-authorize a fill. The private key never leaves your wallet. The trade skill
-manifest lives at `skills/fobs-trade/SKILL.md`.
+The server fetches a live quote from the Binance Web3 DEX aggregator and shows
+the real price, fee, price impact and minimum received *before* your wallet is
+asked to act. When you confirm, your wallet approves the spend leg (once) and
+broadcasts the swap transaction on BNB Chain — that broadcast is the sole
+authorization. The server then reads the transaction receipt and records only
+the fill the chain actually reports; a pending tx stays "submitted" and a
+reverted one "failed", never a fabricated success. If the aggregator returns no
+transaction, the app refuses rather than invent one. The private key never leaves
+your wallet. The trade skill manifest lives at `skills/fobs-trade/SKILL.md`.
 
 ## Live only — never mock
 

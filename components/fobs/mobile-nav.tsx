@@ -5,13 +5,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Route } from "next";
-import { Bot, House, LineChart, Users, Wallet } from "lucide-react";
+import { House, LineChart, Users, Wallet } from "lucide-react";
 
 const items = [
   { icon: House, label: "Home", href: "/feed" as Route },
   { icon: LineChart, label: "Markets", href: "/markets" as Route },
   { icon: Wallet, label: "Portfolio", href: "/portfolio" as Route },
-  { icon: Bot, label: "Agent", href: "/agent" as Route },
   { icon: Users, label: "People", href: "/friends" as Route }
 ] as const;
 

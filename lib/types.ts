@@ -146,39 +146,3 @@ export type WalletBalance = {
   price: number | null;
   valueUsd: number | null;
 };
-
-// ── Agent ────────────────────────────────────────────────────────────────
-export type AgentToolName =
-  | "get_market_data"
-  | "get_tokenized_stock"
-  | "get_social_activity"
-  | "get_wallet_holdings"
-  | "get_trade_history"
-  | "prepare_trade"
-  | "simulate_transaction"
-  | "request_wallet_confirmation";
-
-export type PreparedTrade = {
-  symbol: string;
-  side: TradeSide;
-  amountUsd: number;
-  estimatedQuantity: number | null;
-  price: number | null;
-  contractAddress?: string;
-  provider?: AssetProvider;
-  // The agent NEVER holds custody: it produces this preview and hands it to the
-  // wallet, which is the only thing that can authorize execution.
-  requiresWalletConfirmation: true;
-  rationale: string;
-};
-
-export type AgentStep = {
-  tool: AgentToolName;
-  summary: string;
-};
-
-export type AgentResponse = {
-  message: string;
-  steps: AgentStep[];
-  preparedTrade: PreparedTrade | null;
-};

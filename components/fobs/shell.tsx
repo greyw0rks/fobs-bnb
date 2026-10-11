@@ -4,6 +4,7 @@
 
 import { FobsSidebar } from "./navigation";
 import { FobsTopbar } from "./topbar";
+import { PriceTicker } from "./price-ticker";
 import { MobileNav } from "./mobile-nav";
 import { AppGate } from "./app-gate";
 
@@ -14,6 +15,7 @@ export function FobsShell({ children }: { children: React.ReactNode }) {
         <FobsSidebar />
         <div className="min-w-0 flex-1">
           <FobsTopbar />
+          <PriceTicker />
           <main className="mx-auto max-w-[1500px] px-4 py-5 pb-24 sm:px-6 lg:px-8 lg:pb-8">
             <AppGate>{children}</AppGate>
           </main>

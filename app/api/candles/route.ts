@@ -3,19 +3,26 @@ import { getRwaCandles } from "@/lib/binance-web3";
 
 export const dynamic = "force-dynamic";
 
+// Binance RWA candle granularities we are willing to proxy. The client picks one
+// by timeframe; anything else falls back to the 1h default rather than passing
+// unvalidated input upstream.
+const ALLOWED_BARS = new Set(["1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"]);
+
 // Price history for the stock chart. Proxies the Binance RWA candle endpoint
 // when a key is configured; otherwise returns an empty series (the chart shows
 // an honest "not read yet" rather than a fabricated line).
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const contract = searchParams.get("contract");
+  const requested = searchParams.get("bar");
+  const bar = requested && ALLOWED_BARS.has(requested) ? requested : "1h";
 
   if (!process.env.OC_API_KEY || !process.env.OC_SECRET_KEY || !contract) {
     return NextResponse.json({ candles: [] });
   }
 
   try {
-    const raw = await getRwaCandles(contract, "1h");
+    const raw = await getRwaCandles(contract, bar);
     // Binance RWA candle rows are arrays: [open, high, low, close, volume, tsMs, trades].
     // Timestamp is the large epoch-ms integer; close is index 3.
     const points = (raw.data ?? [])

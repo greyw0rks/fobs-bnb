@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Route } from "next";
-import { Bot, House, LineChart, Star, Users, Wallet } from "lucide-react";
+import { House, LineChart, Star, Users, Wallet } from "lucide-react";
 import { ConnectWalletButton } from "@/components/connect-wallet-button";
 
 const primary = [
@@ -18,7 +18,6 @@ const primary = [
 ] as const;
 
 const secondary = [
-  { label: "Agent", href: "/agent" as Route, icon: Bot },
   { label: "People", href: "/friends" as Route, icon: Users },
   { label: "Watchlist", href: "/watchlist" as Route, icon: Star }
 ] as const;
@@ -29,7 +28,7 @@ export function FobsSidebar() {
     pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <aside className="hidden w-[220px] shrink-0 border-r border-[#e3e2dc] bg-[#f8f7f3] px-4 py-5 lg:flex lg:flex-col">
+    <aside className="hidden w-[180px] shrink-0 border-r border-[var(--hairline)] bg-[var(--surface)] px-3 py-5 lg:flex lg:flex-col">
       <Link href={"/feed" as Route} className="mb-8 px-3 text-[21px] font-bold tracking-[-0.06em]">
         fobs
       </Link>
@@ -40,7 +39,7 @@ export function FobsSidebar() {
         ))}
       </nav>
 
-      <div className="mb-2 mt-8 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8a8b84]">
+      <div className="mb-2 mt-8 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--faint)]">
         Discover
       </div>
 
@@ -73,7 +72,7 @@ function NavItem({
       href={href}
       aria-current={active ? "page" : undefined}
       className={`flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] transition ${
-        active ? "bg-[#080909] text-white" : "text-[#5f615c] hover:bg-white"
+        active ? "bg-[var(--ink)] text-white" : "text-[color:var(--muted)] hover:bg-[var(--raised)]"
       }`}
     >
       <Icon size={15} strokeWidth={1.8} />
