@@ -12,7 +12,7 @@ export default async function FeedPage() {
   const rail = assets.slice(0, 6);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="feed-layout">
       <section className="min-w-0">
         <header style={{ marginBottom: 16 }}>
           <h1 className="trade-title" style={{ fontSize: 22 }}>Feed</h1>
@@ -21,7 +21,7 @@ export default async function FeedPage() {
         <FeedView initial={posts} />
       </section>
 
-      <aside className="hidden lg:block">
+      <aside className="feed-rail">
         <div className="fobs-surface p-5">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold">Markets</h3>

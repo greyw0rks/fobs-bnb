@@ -1,55 +1,59 @@
-// RFQ trade flow for tokenized stocks (Ondo / bStock) on BNB Chain.
+// Trade flow for tokenized stocks (Ondo / bStock / xStocks) on BNB Chain.
 //
-// Tokenized-stock tokens do NOT trade through a plain AMM swap — they use the
-// Binance aggregator's RFQ (request-for-quote) path, which maps 1:1 onto Fobs's
-// non-custodial model:
+// web3.binance.com/build is an OKX-style DEX aggregator. The real flow, verified
+// against the live API on 2026-10-10, is a standard on-chain swap — NOT a typed-
+// data RFQ signature:
 //
-//   quote  →  user's wallet SIGNS the order  →  submit  →  poll status
-//   (server) (browser / agentic wallet)         (server)   (server)
+//   quote (GET)  →  swap (GET → raw EVM tx)  →  wallet APPROVES + SENDS the tx  →  on-chain receipt
+//   (server)        (server)                    (browser / wallet)                 (server verifies)
 //
-// The server prepares and submits; it never holds the key. The signature is the
-// authorization boundary — the agent can prepare a quote, but only the wallet
-// can produce the signature that lets `submit` execute.
+// The authorization boundary is the wallet broadcasting the transaction (after an
+// ERC-20 approve to the router). The server only prepares the tx and later reads
+// the receipt; it never holds the key and never moves funds.
 //
-// NOTE ON SCHEMA: the exact request/response field names for these aggregator
-// endpoints could not be verified against a live key in the research env
-// (geo-blocked). The shapes below follow the documented flow and the SDK's
-// naming; `normalize*` funnels every response through one place, so if a field
-// differs it is a one-line fix here rather than a hunt across callers.
+// SCHEMA: reconciled against live responses. A quote returns `data: [ {...} ]`
+// (an array of competing vendor quotes); the swap returns `data: { tx, routerResult }`.
+// Prices live on each token as `tokenUnitPrice`; amounts are base units (18 dp).
 
-import { binanceWeb3Get, binanceWeb3Post } from "./binance-web3";
+import { formatUnits, parseUnits } from "viem";
+import { binanceWeb3Get } from "./binance-web3";
 import type { TradeSide } from "./types";
 
 const AGG = "/api/v1/dex/aggregator";
-const PRE = "/api/v1/dex/pre-transaction";
+// BSC USDT — the stable leg every tokenized-stock buy/sell routes through.
+export const USDT_BSC = "0x55d398326f99059fF775485246999027B3197955";
+export const DEFAULT_SLIPPAGE_PCT = "0.5";
+const DECIMALS = 18; // every supported BSC tokenized stock + USDT is 18 dp
 
 export type QuoteInput = {
   symbol: string;
   side: TradeSide;
   amountUsd: number;
-  tokenContractAddress: string;
+  tokenContractAddress: string; // the stock token
   walletAddress: string;
-  provider: string;
+  provider: string; // platformId
+  price?: number | null; // live stock price — needed to size a sell in tokens
 };
 
 export type TradeQuote = {
   quoteId: string;
-  requestId: string;
-  vendor: string;
-  price: number | null;
-  estimatedQuantity: number | null;
-  amountUsd: number;
+  vendorName: string;
   side: TradeSide;
   symbol: string;
-  // Cost transparency — parsed from the quote when the aggregator returns it,
-  // null (an em dash in the UI) when it doesn't. Never invented.
+  amountUsd: number;
+  // The leg the wallet spends and the leg it receives, plus the base-unit amount
+  // handed to the aggregator. The client needs these to approve + build the tx.
+  fromTokenAddress: string;
+  toTokenAddress: string;
+  amount: string; // base units (18 dp) of the fromToken
+  // Display figures, live from the quote — null (an em dash) when absent, never faked.
+  price: number | null; // stock price per token
+  estimatedQuantity: number | null; // stock tokens bought (buy) or sold (sell)
   feeUsd: number | null;
   priceImpactPct: number | null;
-  minReceived: number | null;
-  // The payload the wallet must sign to authorize the fill. Opaque here; the
-  // client hands it to the wallet and returns the signature.
-  orderToSign: unknown;
-  expiresAt: number | null; // epoch ms; quotes are ~30s TTL
+  minReceived: number | null; // buy only: estimatedQuantity × (1 − slippage)
+  approveTarget: string | null; // ERC-20 spender the wallet must approve
+  expiresAt: number | null; // epoch ms; quotes are short-lived (~30s)
 };
 
 function num(value: unknown): number | null {
@@ -57,131 +61,119 @@ function num(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Step 1 — ask the aggregator for an RFQ quote. Server-side (signed). */
-export async function quoteTrade(input: QuoteInput): Promise<TradeQuote> {
-  const raw = await binanceWeb3Post<any>(`${AGG}/quote`, {
-    binanceChainId: "56",
-    fromTokenAddress: input.side === "buy" ? "USDT" : input.tokenContractAddress,
-    toTokenAddress: input.side === "buy" ? input.tokenContractAddress : "USDT",
-    amount: input.amountUsd,
-    userWalletAddress: input.walletAddress,
-    platformId: input.provider,
-    rwa: true
-  });
-  const data = raw?.data ?? raw ?? {};
+/** USDT (buy) or the stock token (sell) and the base-unit amount to send. A sell
+ *  is sized from the live price; without one we can't convert USD→tokens. */
+function legs(input: QuoteInput): { fromTokenAddress: string; toTokenAddress: string; amount: string } {
+  if (input.side === "buy") {
+    return {
+      fromTokenAddress: USDT_BSC,
+      toTokenAddress: input.tokenContractAddress,
+      amount: parseUnits(String(input.amountUsd), DECIMALS).toString()
+    };
+  }
+  if (!input.price || input.price <= 0) {
+    throw new Error("Can't size a sell without a live price for the token.");
+  }
+  const tokens = input.amountUsd / input.price;
   return {
-    quoteId: data.quoteId ?? data.quote_id ?? "",
-    requestId: data.requestId ?? data.request_id ?? "",
-    vendor: data.vendor ?? input.provider,
-    price: num(data.price ?? data.tokenPrice),
-    estimatedQuantity: num(data.toTokenAmount ?? data.estimatedQuantity ?? data.quantity),
-    amountUsd: input.amountUsd,
-    side: input.side,
-    symbol: input.symbol,
-    feeUsd: num(data.feeUsd ?? data.fee ?? data.totalFee ?? data.feeAmount),
-    priceImpactPct: num(data.priceImpact ?? data.priceImpactPct ?? data.slippage),
-    minReceived: num(data.minReceived ?? data.minimumReceived ?? data.minAmountOut ?? data.minToTokenAmount),
-    orderToSign: data.order ?? data.orderToSign ?? data.typedData ?? null,
-    expiresAt: num(data.expiresAt ?? data.expireAt) ?? Date.now() + 30_000
+    fromTokenAddress: input.tokenContractAddress,
+    toTokenAddress: USDT_BSC,
+    amount: parseUnits(tokens.toFixed(DECIMALS), DECIMALS).toString()
   };
 }
 
-// Step 2 — SIMULATE the order before the wallet signs it. This is the checklist's
-// pre-flight: it catches a revert (insufficient liquidity, market closed, bad
-// route) and surfaces the concrete cost (fee, price impact, minimum received)
-// so the signer sees exactly what they're authorizing. HONESTY RULE: `willSucceed`
-// is only `true`/`false` when the aggregator says so — `null` means "could not
-// simulate", never a fabricated OK. A `false` blocks signing; a `null` surfaces a
-// warning but doesn't fake a pass.
-export type TradeSimulation = {
-  willSucceed: boolean | null;
-  estimatedQuantity: number | null;
-  price: number | null;
-  feeUsd: number | null;
-  priceImpactPct: number | null;
-  minReceived: number | null;
-  gasEstimateUsd: number | null;
-  revertReason: string | null;
-};
+function aggParams(input: QuoteInput, l: ReturnType<typeof legs>) {
+  return {
+    binanceChainId: "56",
+    fromTokenAddress: l.fromTokenAddress,
+    toTokenAddress: l.toTokenAddress,
+    amount: l.amount,
+    userWalletAddress: input.walletAddress
+  };
+}
 
-function simOutcome(data: any): boolean | null {
-  const explicit = data.success ?? data.willSucceed ?? data.simulated ?? data.ok;
-  if (typeof explicit === "boolean") return explicit;
-  const status = String(data.status ?? data.result ?? "").toUpperCase();
-  if (["SUCCESS", "OK", "SIMULATED", "PASS", "PASSED"].includes(status)) return true;
-  if (["FAILED", "REVERT", "REVERTED", "REJECTED", "ERROR"].includes(status)) return false;
+/** Pick the token entry (fromToken/toToken) matching an address, for its price. */
+function tokenInfo(q: any, address: string) {
+  const a = address.toLowerCase();
+  for (const t of [q?.fromToken, q?.toToken]) {
+    if (t?.tokenContractAddress && String(t.tokenContractAddress).toLowerCase() === a) return t;
+  }
   return null;
 }
 
-/** Step 2 — pre-transaction simulate. Server-side (signed). */
-export async function simulateTrade(quote: TradeQuote): Promise<TradeSimulation> {
-  const raw = await binanceWeb3Post<any>(`${PRE}/simulate`, {
-    binanceChainId: "56",
-    quoteId: quote.quoteId,
-    requestId: quote.requestId,
-    vendor: quote.vendor,
-    evmTx: quote.orderToSign ?? undefined,
-    rwa: true
-  });
-  const data = raw?.data ?? raw ?? {};
+/** Step 1 — ask the aggregator for the best quote. `data` is an array of vendor
+ *  quotes; we take the one flagged `isBest` (falling back to the first). */
+export async function quoteTrade(input: QuoteInput): Promise<TradeQuote> {
+  const l = legs(input);
+  const raw = await binanceWeb3Get<any>(`${AGG}/quote`, aggParams(input, l));
+  const list: any[] = Array.isArray(raw?.data) ? raw.data : [];
+  const q = list.find((x) => x?.isBest) ?? list[0];
+  if (!q) throw new Error(raw?.msg || "No quote available for this order.");
+
+  const stock = tokenInfo(q, input.tokenContractAddress);
+  if (stock?.isHoneyPot) throw new Error("Refusing to quote — the token flags as a honeypot.");
+
+  // Stock-token quantity: the toToken amount on a buy, the fromToken amount on a sell.
+  const stockAmountBase = input.side === "buy" ? q.toTokenAmount : q.fromTokenAmount;
+  const estimatedQuantity = stockAmountBase != null ? num(formatUnits(BigInt(stockAmountBase), DECIMALS)) : null;
+  const slip = Number(DEFAULT_SLIPPAGE_PCT) / 100;
+
   return {
-    willSucceed: simOutcome(data),
-    estimatedQuantity: num(data.toTokenAmount ?? data.estimatedQuantity ?? data.quantity) ?? quote.estimatedQuantity,
-    price: num(data.price ?? data.fillPrice) ?? quote.price,
-    feeUsd: num(data.feeUsd ?? data.fee ?? data.totalFee ?? data.feeAmount) ?? quote.feeUsd,
-    priceImpactPct: num(data.priceImpact ?? data.priceImpactPct ?? data.slippage) ?? quote.priceImpactPct,
-    minReceived: num(data.minReceived ?? data.minimumReceived ?? data.minAmountOut) ?? quote.minReceived,
-    gasEstimateUsd: num(data.gasFeeUsd ?? data.estimatedGasUsd ?? data.gasUsd ?? data.gasFee),
-    revertReason: data.revertReason ?? data.failReason ?? data.error ?? data.msg ?? null
+    quoteId: q.quoteId ?? "",
+    vendorName: q.vendorName ?? input.provider,
+    side: input.side,
+    symbol: input.symbol,
+    amountUsd: input.amountUsd,
+    fromTokenAddress: l.fromTokenAddress,
+    toTokenAddress: l.toTokenAddress,
+    amount: l.amount,
+    price: num(stock?.tokenUnitPrice),
+    estimatedQuantity,
+    feeUsd: num(q.tradeFee),
+    priceImpactPct: num(q.priceImpactPercent),
+    minReceived: input.side === "buy" && estimatedQuantity != null ? estimatedQuantity * (1 - slip) : null,
+    approveTarget: q.approveTarget ?? null,
+    expiresAt: Date.now() + 30_000
   };
 }
 
-export type SubmitInput = {
-  requestId: string;
+export type SwapTx = { to: string; data: string; value: string };
+export type PreparedSwap = {
   quoteId: string;
-  vendor: string;
-  userSignature: string;
-};
-
-export type SubmitResult = { orderId: string };
-
-/** Step 3 — submit the wallet-signed order for execution. Server-side (signed). */
-export async function submitTrade(input: SubmitInput): Promise<SubmitResult> {
-  const raw = await binanceWeb3Post<any>(`${AGG}/order/submit`, {
-    requestId: input.requestId,
-    quoteId: input.quoteId,
-    vendor: input.vendor,
-    userSignature: input.userSignature
-  });
-  const data = raw?.data ?? raw ?? {};
-  return { orderId: data.orderId ?? data.order_id ?? "" };
-}
-
-export type OrderStatus = {
-  orderId: string;
-  status: "quoted" | "submitted" | "confirmed" | "failed";
-  txHash: string | null;
+  tx: SwapTx;
+  fromTokenAddress: string;
+  toTokenAddress: string;
+  amount: string; // base units the wallet must have approved
+  approveTarget: string; // ERC-20 spender (equals tx.to)
   price: number | null;
-  quantity: number | null;
+  estimatedQuantity: number | null;
 };
 
-function mapStatus(raw: string | undefined): OrderStatus["status"] {
-  const s = (raw ?? "").toUpperCase();
-  if (["SUCCESS", "FILLED", "CONFIRMED", "COMPLETED"].includes(s)) return "confirmed";
-  if (["FAILED", "REJECTED", "EXPIRED", "CANCELLED"].includes(s)) return "failed";
-  if (["SUBMITTED", "PENDING", "PROCESSING"].includes(s)) return "submitted";
-  return "submitted";
-}
+/** Step 2 — fetch a FRESH quote and the raw swap transaction the wallet will send.
+ *  Called at sign time (not review time) because quotes are short-lived. */
+export async function getSwapTx(input: QuoteInput): Promise<PreparedSwap> {
+  const quote = await quoteTrade(input);
+  if (!quote.quoteId) throw new Error("Quote expired before the swap could be built.");
 
-/** Step 4 — poll the order until it settles. Server-side (signed). */
-export async function getOrderStatus(orderId: string): Promise<OrderStatus> {
-  const raw = await binanceWeb3Get<any>(`${AGG}/order/${encodeURIComponent(orderId)}`);
-  const data = raw?.data ?? raw ?? {};
+  const l = legs(input);
+  const raw = await binanceWeb3Get<any>(`${AGG}/swap`, {
+    ...aggParams(input, l),
+    quoteId: quote.quoteId,
+    slippagePercent: DEFAULT_SLIPPAGE_PCT
+  });
+  const tx = raw?.data?.tx;
+  if (!tx?.to || !tx?.data) {
+    throw new Error(raw?.msg || "Aggregator returned no transaction to send — not proceeding.");
+  }
+
   return {
-    orderId,
-    status: mapStatus(data.status ?? data.orderStatus),
-    txHash: data.txHash ?? data.txnHash ?? data.transactionHash ?? null,
-    price: num(data.price ?? data.fillPrice),
-    quantity: num(data.quantity ?? data.filledQuantity)
+    quoteId: quote.quoteId,
+    tx: { to: tx.to, data: tx.data, value: tx.value ?? "0x0" },
+    fromTokenAddress: l.fromTokenAddress,
+    toTokenAddress: l.toTokenAddress,
+    amount: l.amount,
+    approveTarget: quote.approveTarget ?? tx.to,
+    price: quote.price,
+    estimatedQuantity: quote.estimatedQuantity
   };
 }

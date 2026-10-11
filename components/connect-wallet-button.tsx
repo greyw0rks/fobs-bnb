@@ -21,11 +21,32 @@ function connectorLabel(c: Connector): string {
   return c.name || "Browser wallet";
 }
 
+// Browser wallets announce themselves over EIP-6963 — one named connector each
+// (MetaMask, Binance Wallet, Trust…). wagmi ALSO keeps a generic "injected"
+// catch-all, which duplicates whichever wallet owns window.ethereum, so the
+// picker was showing e.g. both "Browser wallet" and "MetaMask" for one wallet.
+// Drop the catch-all once named wallets were discovered (keep it as the only
+// fallback when none were), then fold any same-named duplicates.
+function dedupeConnectors(connectors: readonly Connector[]): Connector[] {
+  const hasNamedInjected = connectors.some((c) => c.type === "injected" && c.id !== "injected");
+  const seen = new Set<string>();
+  const out: Connector[] = [];
+  for (const c of connectors) {
+    if (c.type === "injected" && c.id === "injected" && hasNamedInjected) continue;
+    const key = `${c.type}:${(c.name || "").toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out;
+}
+
 export function ConnectWalletButton({ className }: { className?: string }) {
   const { isConnected, address } = useAccount();
-  const { connect, connectors, isPending } = useConnect();
+  const { connect, connectors: rawConnectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const [open, setOpen] = useState(false);
+  const connectors = dedupeConnectors(rawConnectors);
 
   if (isConnected && address) {
     return (

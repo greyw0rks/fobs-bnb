@@ -1,0 +1,172 @@
+/* ============================================================================
+   terminal.css — arcus-style trading terminal, themed to fobs (Soft Editorial).
+   Ports arcus's section placement, panels and the price top-nav. Every colour
+   comes from the fobs tokens in globals.css — never arcus's green palette.
+   Portable: drop into any fobs app and import AFTER fobs.css.
+   ============================================================================ */
+
+:root{
+  --term-rail: 288px;   /* left token-info column */
+  --term-aside: 352px;  /* right trade column     */
+  --term-seam: 1px;     /* hairline grid seam     */
+  --term-radius: 16px;
+}
+
+/* ---------- price ticker — the "top nav that shows prices" ---------- */
+.ticker-bar{
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: 12px;
+  height: 36px; padding: 0 14px; overflow: hidden;
+  border-bottom: 1px solid var(--hairline);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--surface) 94%, transparent),
+    color-mix(in srgb, var(--paper) 92%, transparent));
+  backdrop-filter: saturate(1.1) blur(8px);
+  -webkit-backdrop-filter: saturate(1.1) blur(8px);
+}
+.ticker-tag{
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--muted); padding-right: 12px; border-right: 1px solid var(--hairline);
+}
+.ticker-tag .pulse{ width: 6px; height: 6px; border-radius: 50%; background: var(--up);
+  animation: tkpulse 2.4s ease-out infinite; }
+@keyframes tkpulse{ 0%{ box-shadow:0 0 0 0 color-mix(in srgb,var(--up) 55%,transparent) }
+  70%{ box-shadow:0 0 0 7px transparent } 100%{ box-shadow:0 0 0 0 transparent } }
+.ticker-view{ position: relative; flex: 1 1 auto; overflow: hidden; min-width: 0;
+  mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); }
+.ticker-track{ display: inline-flex; align-items: center; gap: 26px; white-space: nowrap;
+  will-change: transform; animation: tkscroll 46s linear infinite; }
+.ticker-view:hover .ticker-track{ animation-play-state: paused; }
+@keyframes tkscroll{ from{ transform: translateX(0) } to{ transform: translateX(-50%) } }
+.tk{ display: inline-flex; align-items: baseline; gap: 7px; font-size: 12px; }
+.tk .sym{ font-weight: 650; color: var(--ink); letter-spacing: -.01em; }
+.tk .px{ font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.tk .chg{ font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 11px; }
+.tk .chg.up{ color: var(--up) } .tk .chg.down{ color: var(--down) } .tk .chg.flat{ color: var(--faint) }
+.ticker-empty{ font-size: 11px; color: var(--faint); font-style: italic; }
+
+/* ---------- 3-column terminal grid (300 / 1fr / 320, arcus placement) ---------- */
+.term{ display: grid; gap: var(--term-seam);
+  grid-template-columns: var(--term-rail) minmax(0,1fr) var(--term-aside);
+  background: var(--hairline); border: 1px solid var(--hairline);
+  border-radius: var(--term-radius); overflow: hidden; }
+.term-col{ background: var(--surface); min-width: 0; display: flex; flex-direction: column; }
+.term-pad{ padding: 16px; min-width: 0; }
+
+/* section head + kv rows (ported .sec-h / .kv) */
+.term-sec{ padding: 14px 16px; border-top: 1px solid var(--hairline); }
+.term-sec:first-child{ border-top: 0; }
+.term-h{ font-size: 10px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--muted); margin: 0 0 10px; }
+.kv{ display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 7px 0; border-top: 1px dashed var(--hairline); }
+.kv:first-of-type{ border-top: 0; }
+.kv .k{ font-size: 12px; color: var(--muted); }
+.kv .v{ font-size: 12px; color: var(--ink); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* token head (ported .tok-head / .price-row / .price-big) */
+.tok-head{ padding: 18px 16px; }
+.tok-eyebrow{ font-size: 11px; color: var(--muted); }
+.tok-title{ font-family: var(--font-display, var(--sans)); font-weight: 600;
+  font-size: 30px; line-height: 1.04; letter-spacing: -.02em; color: var(--ink); margin: 2px 0 0; }
+.price-row{ display: flex; align-items: flex-end; gap: 10px; margin-top: 12px; }
+.price-big{ font-family: var(--font-display, var(--sans)); font-variant-numeric: tabular-nums;
+  font-size: 30px; font-weight: 600; letter-spacing: -.02em; color: var(--ink); }
+.price-chg{ font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; padding-bottom: 4px; }
+.price-chg.up{ color: var(--up) } .price-chg.down{ color: var(--down) } .price-chg.flat{ color: var(--faint) }
+
+/* market-news card list — the left-column "Market News" widget. Each item is a
+   ticker-badged quote + headline that links out. Tokens only, so it blends with
+   the kv rows above it; the live dot reuses the ticker pulse. */
+.newsfeed{ display: flex; flex-direction: column; gap: 2px; }
+.newsfeed-head{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.newsfeed-title{ font-size: 14px; font-weight: 650; color: var(--ink); letter-spacing: -.01em; }
+.newsfeed-live{ display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.newsfeed-live .dot{ width: 7px; height: 7px; border-radius: 50%; background: var(--up);
+  animation: tkpulse 2.4s ease-out infinite; }
+.news-card{ display: flex; flex-direction: column; gap: 6px; padding: 12px 0;
+  border-top: 1px solid var(--hairline); transition: opacity .15s ease; }
+.news-card:first-of-type{ border-top: 0; padding-top: 2px; }
+
+/* Preview window: show ~2-3 headlines, scroll the rest. A fixed max-height keeps
+   the left column's height stable when the feed resolves, so the trade panel on
+   the right no longer reflows/breaks the moment news loads. */
+.news-scroll{ max-height: 258px; overflow-y: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch; padding-right: 4px;
+  scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent; }
+.news-scroll::-webkit-scrollbar{ width: 6px; }
+.news-scroll::-webkit-scrollbar-thumb{ background: var(--hairline-strong); border-radius: 999px; }
+.news-scroll::-webkit-scrollbar-track{ background: transparent; }
+.news-scroll .news-card:first-of-type{ border-top: 0; padding-top: 2px; }
+.news-card:hover{ opacity: .72; }
+.news-card-top{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.news-id{ display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.news-badge{ font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .04em;
+  color: var(--ink); background: var(--raised); border-radius: 5px; padding: 2px 6px; flex: 0 0 auto; }
+.news-co{ font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.news-px{ display: inline-flex; align-items: baseline; gap: 6px; flex: 0 0 auto; }
+.news-last{ font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ink); }
+.news-chg{ font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 11px; }
+.news-chg.up{ color: var(--up) } .news-chg.down{ color: var(--down) } .news-chg.flat{ color: var(--faint) }
+.news-headline{ font-size: 13px; line-height: 1.4; color: var(--ink); font-weight: 500; }
+.news-src{ font-size: 11px; color: var(--faint); }
+
+/* chart column tabs + toolbar (ported .tabs / .tab / .tf) */
+.term-tabs{ display: flex; gap: 2px; padding: 10px 14px 0; border-bottom: 1px solid var(--hairline); }
+.term-tab{ font-size: 12px; color: var(--muted); padding: 8px 12px; border-radius: 8px 8px 0 0;
+  border: 1px solid transparent; border-bottom: 0; background: transparent;
+  transition: color .15s ease, background .15s ease; }
+.term-tab.active{ color: var(--ink); background: var(--surface); border-color: var(--hairline); }
+.term-toolbar{ display: flex; align-items: center; gap: 8px; padding: 10px 14px; flex-wrap: wrap; }
+.tf{ font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 4px 9px; border-radius: 999px;
+  border: 1px solid var(--hairline); background: var(--paper); cursor: pointer;
+  transition: color .15s ease, background .15s ease, border-color .15s ease; }
+.tf:hover{ color: var(--ink); border-color: var(--hairline-strong); }
+.tf.active{ color: var(--ink); background: var(--surface); border-color: var(--hairline-strong); font-weight: 600; }
+
+/* chart header: change readout on the left, timeframe pills on the right */
+.chart-head{ display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 4px 2px 10px; flex-wrap: wrap; }
+.chart-delta{ font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 600; }
+.chart-tf{ display: inline-flex; gap: 4px; }
+.chart-empty{ height: 240px; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+
+/* right trade column — host the existing <aside class="panel trade-panel"> flush.
+   The panel takes its NATURAL height and sits at the top of the column; it must
+   not fill it. The grid sizes every column to the tallest one, and .trade-panel
+   is itself a `display:grid` — forcing it to height:100% made that inner grid
+   distribute the leftover vertical space into its auto rows, so the buy/sell
+   buttons ballooned the moment the left column grew (e.g. when news loaded).
+   `align-content:start` is a belt-and-suspenders guard so the rows pack to the
+   top and never stretch even if something imposes a height. */
+.term-col.aside .trade-panel,
+.term-col.aside .panel{ border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  background: transparent !important; height: auto; align-content: start; }
+
+/* polish */
+.lift{ transition: transform .18s ease, box-shadow .18s ease; }
+.lift:hover{ transform: translateY(-1px); box-shadow: 0 6px 20px -12px rgba(17,19,18,.22); }
+.term-back{ margin-top: 14px; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--muted); transition: color .15s ease; }
+.term-back:hover{ color: var(--ink); }
+
+/* ---------- responsive (arcus 1180 / 860 collapse) ---------- */
+@media (max-width: 1180px){
+  .term{ grid-template-columns: var(--term-rail) minmax(0,1fr); }
+  .term-col.aside{ grid-column: 1 / -1; border-top: 1px solid var(--hairline); }
+}
+@media (max-width: 860px){
+  :root{ --term-radius: 12px; }
+  .term{ grid-template-columns: 1fr; }
+  .term-col{ border-top: 1px solid var(--hairline); }
+  .term-col:first-child{ border-top: 0; }
+  .tok-title, .price-big{ font-size: 26px; }
+  .ticker-tag{ display: none; }
+}
+@media (prefers-reduced-motion: reduce){
+  .ticker-track{ animation: none; }
+  .ticker-view{ overflow-x: auto; }
+  .ticker-tag .pulse{ animation: none; }
+}

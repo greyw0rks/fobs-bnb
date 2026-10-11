@@ -1,0 +1,16 @@
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  bufferutil: true
+  esbuild: true
+  keccak: true
+  prisma: true
+  utf-8-validate: true
+onlyBuiltDependencies:
+  - '@prisma/client'
+  - '@prisma/engines'
+  - prisma
+  - esbuild
+  - keccak
+  - bufferutil
+  - utf-8-validate

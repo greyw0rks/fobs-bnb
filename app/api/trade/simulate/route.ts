@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { quoteTrade, simulateTrade } from "@/lib/rfq";
+import { quoteTrade } from "@/lib/rfq";
 import { getAssetVariants } from "@/lib/assets";
 import { DEFAULT_PROVIDER } from "@/lib/assets-registry";
 import { isAddress } from "@/lib/session";
@@ -15,17 +15,14 @@ const Body = z.object({
   provider: z.string().optional()
 });
 
-// Step 2 of the RFQ flow (quote -> SIMULATE -> sign -> submit). Live only.
-//
-// We fetch a real quote and run it through the aggregator's pre-transaction
-// simulate so the signer sees the concrete cost (fee, price impact, minimum
-// received) AND any revert BEFORE their wallet is asked to sign. The same quote
-// is returned so the client signs exactly what was simulated — no re-quote drift.
-// If the API is not configured or the asset has no contract, we refuse (503);
-// we never fabricate a simulation result.
+// Review step: fetch a real quote so the signer sees the concrete cost (price,
+// fee, price impact, minimum received) BEFORE any wallet action. Live only — if
+// the API isn't configured or the asset has no on-chain contract we refuse (503)
+// rather than fabricate a quote. The signable transaction is built later, at sign
+// time (/api/trade/swap), because quotes are short-lived.
 export async function POST(request: Request) {
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Invalid simulate request" }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "Invalid quote request" }, { status: 400 });
   const { address, symbol, side, amountUsd } = parsed.data;
   if (!isAddress(address)) return NextResponse.json({ error: "Valid wallet address required" }, { status: 400 });
 
@@ -49,13 +46,13 @@ export async function POST(request: Request) {
       amountUsd,
       tokenContractAddress: asset.contractAddress,
       walletAddress: address,
-      provider: asset.provider
+      provider: asset.provider,
+      price: asset.price
     });
-    const simulation = await simulateTrade(quote);
-    return NextResponse.json({ quote, simulation });
+    return NextResponse.json({ quote });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Simulation failed" },
+      { error: error instanceof Error ? error.message : "Could not quote the order" },
       { status: 502 }
     );
   }

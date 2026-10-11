@@ -771,6 +771,34 @@ code {
   padding-left: var(--s-4);
 }
 
+/* Amount entry: a `$` adornment inside the field so the unit reads at a glance
+   without stealing a whole label row. */
+.amount-field {
+  position: relative;
+  margin-top: var(--s-2);
+}
+
+.amount-prefix {
+  position: absolute;
+  left: var(--s-3);
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--mono);
+  font-size: var(--t-lg);
+  font-weight: 600;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.input.amount-input {
+  padding-left: calc(var(--s-3) + 14px);
+}
+
+.input.amount-input[aria-invalid="true"] {
+  border-color: var(--down);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--down) 14%, transparent);
+}
+
 .quote {
   padding: var(--s-3);
   border: 1px solid var(--hairline);

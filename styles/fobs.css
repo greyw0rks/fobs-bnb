@@ -82,3 +82,24 @@
 .fobs-negative {
   color: var(--fobs-red);
 }
+
+/* Feed layout — scoped so it does not collide with the global unlayered `.grid`
+   (which forces a 340px rail and only collapses at 960px). Here the column
+   collapse and the rail's hide breakpoint agree at 960px, matching the app
+   chrome, so there is never an empty rail column with the feed squished left. */
+.feed-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--s-5);
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .feed-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .feed-rail {
+    display: none;
+  }
+}
