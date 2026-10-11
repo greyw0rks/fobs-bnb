@@ -4,3 +4,4 @@ node_modules
 .env.local
 prisma/*.db
 prisma/*.db-journal
+brag-output
